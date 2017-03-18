@@ -33,27 +33,14 @@ from blender_api_msgs.msg import AvailableEmotionStates, AvailableGestures
 from blender_api_msgs.msg import EmotionState
 from blender_api_msgs.msg import SetGesture
 from blender_api_msgs.msg import Target
-from blender_api_msgs.msg import BlinkCycle
-from blender_api_msgs.msg import SaccadeCycle
 from blender_api_msgs.msg import SomaState
-from chatbot.msg import ChatMessage
-
-# Not everything has this message; don't break if it's missing.
-# i.e. create a stub if its not defined.
-#try:
-#	from chatbot.msg import ChatMessage
-#except (NameError, ImportError):
-#	class ChatMessage:
-#		def __init__(self):
-#			self.utterance = ''
-#			self.confidence = 0
 
 from put_atoms import PutAtoms
 logger = logging.getLogger('hr.OpenCog_Eva')
 
 # ROS interfaces for the Atomese (OpenCog) Behavior Tree. Publishes
-# ROS messages for animation control (smiling, frowning), and subscribes
-# to STT/TTS and chatbot messages.
+# ROS messages for animation control (smiling, frowning), as well
+# ass messages that tell the robot to say something.
 #
 # This is meant to be a convenience wrapper, allowing Eva to be
 # controlled from OpenCog Atomese.  Although it probably works as
@@ -61,12 +48,10 @@ logger = logging.getLogger('hr.OpenCog_Eva')
 # In particular, the python interpreter built into the atomspace
 # will be runnig this code.
 #
-# It currently handles both control messages (publishing of expression
-# and gesture animations), as well as some sensory input (mostly
-# STT, TTS and chatbot interactions).  Visual servoing for face tracking
-# is done by a stand-alone ROS node, in the face_tracker directory.
+# It currently publishes robot motor control messages -- expression
+# and gesture animations, text to be verbalized. 
 #
-# This does listen to several topics that are used to turn behaviors on
+# This does listen to two topics that are used to turn behaviors on
 # and off:
 #
 # `/behavior_switch`, which is used to start and stop the behavior tree.
@@ -171,8 +156,8 @@ class EvaControl():
 	# Turn only the eyes towards the given target point.
 	# Coordinates: meters; x==forward, y==to Eva's left.
 	def gaze_at_point(self, x, y, z):
-		xyz1=numpy.array([x,y,z,1.0])
-		xyz=numpy.dot(self.conv_mat,xyz1)
+		xyz1 = numpy.array([x, y, z, 1.0])
+		xyz = numpy.dot(self.conv_mat, xyz1)
 		trg = Target()
 		trg.x = xyz[0]
 		trg.y = xyz[1]
@@ -183,8 +168,8 @@ class EvaControl():
 	# Turn head towards the given target point.
 	# Coordinates: meters; x==forward, y==to Eva's left.
 	def look_at_point(self, x, y, z):
-		xyz1=numpy.array([x,y,z,1.0])
-		xyz=numpy.dot(self.conv_mat,xyz1)
+		xyz1 = numpy.array([x, y, z, 1.0])
+		xyz = numpy.dot(self.conv_mat, xyz1)
 		trg = Target()
 		trg.x = xyz[0]
 		trg.y = xyz[1]
@@ -199,76 +184,6 @@ class EvaControl():
 	def publish_behavior(self, event):
 		print "----- Behavior pub: " + event
 		self.behavior_pub.publish(event)
-
-	# ----------------------------------------------------------
-	# Wrapper for saccade generator.
-	# This is setup entirely in python, and not in the AtomSpace,
-	# as, at this time, there are no knobs worth twiddling.
-
-	# Explore-the-room saccade when not conversing.
-	# ??? Is this exploring the room, or someone's face? I'm confused.
-	def explore_saccade(self):
-		if not self.control_mode & self.C_SACCADE:
-			return
-		# Switch to conversational (micro) saccade parameters
-		msg = SaccadeCycle()
-		msg.mean =  0.8        # saccade_explore_interval_mean
-		msg.variation = 0.3    # saccade_explore_interval_var
-		msg.paint_scale = 0.3   # saccade_explore_paint_scale
-		# From study face, maybe better default should be defined for
-		# explore
-		msg.eye_size = 15      # saccade_study_face_eye_size
-		msg.eye_distance = 100  # saccade_study_face_eye_distance
-		msg.mouth_width = 90    # saccade_study_face_mouth_width
-		msg.mouth_height = 27  # saccade_study_face_mouth_height
-		msg.weight_eyes = 0.8    # saccade_study_face_weight_eyes
-		msg.weight_mouth = 0.2   # saccade_study_face_weight_mouth
-		self.saccade_pub.publish(msg)
-
-	# Used during conversation to study face being looked at.
-	def conversational_saccade(self):
-		if not self.control_mode & self.C_SACCADE:
-			return
-		# Switch to conversational (micro) saccade parameters
-		msg = SaccadeCycle()
-		msg.mean =  0.8         # saccade_micro_interval_mean
-		msg.variation = 0.5     # saccade_micro_interval_var
-		msg.paint_scale = 0.3   # saccade_micro_paint_scale
-		#
-		msg.eye_size = 11.5      # saccade_study_face_eye_size
-		msg.eye_distance = 100 # saccade_study_face_eye_distance
-		msg.mouth_width = 90    # saccade_study_face_mouth_width
-		msg.mouth_height = 5  # saccade_study_face_mouth_height
-		msg.weight_eyes = 0.8    # saccade_study_face_weight_eyes
-		msg.weight_mouth = 0.2   # saccade_study_face_weight_mouth
-		self.saccade_pub.publish(msg)
-
-	# Used during conversation to study face being looked at.
-	def listening_saccade(self):
-		if not self.control_mode & self.C_SACCADE:
-			return
-		# Switch to conversational (micro) saccade parameters
-		msg = SaccadeCycle()
-		msg.mean =  1         # saccade_micro_interval_mean
-		msg.variation = 0.6      # saccade_micro_interval_var
-		msg.paint_scale = 0.3      # saccade_micro_paint_scale
-		#
-		msg.eye_size = 11        # saccade_study_face_eye_size
-		msg.eye_distance = 80    # saccade_study_face_eye_distance
-		msg.mouth_width = 50     # saccade_study_face_mouth_width
-		msg.mouth_height = 13.0  # saccade_study_face_mouth_height
-		msg.weight_eyes = 0.8    # saccade_study_face_weight_eyes
-		msg.weight_mouth = 0.2   # saccade_study_face_weight_mouth
-		self.saccade_pub.publish(msg)
-
-
-	# ----------------------------------------------------------
-	# Wrapper for controlling the blink rate.
-	def blink_rate(self, mean, variation):
-		msg = BlinkCycle()
-		msg.mean = mean
-		msg.variation = variation
-		self.blink_pub.publish(msg)
 
 	# ----------------------------------------------------------
 	def update_opencog_control_parameter(self, name, value):
@@ -320,32 +235,6 @@ class EvaControl():
 		rospy.logwarn('publishing text to TTS ' + text_to_say)
 		self.tts_pub.publish(text_to_say)
 
-	# The text that the STT module heard.
-	# Unit test by saying
-	#   rostopic pub --once perceived_text std_msgs/String "Look afraid!"
-
-	# The chat_heard message is of type chatbot/ChatMessage
-	# from chatbot.msg import ChatMessage
-	def chat_perceived_text_cb(self, chat_heard):
-		if 'shut up' in chat_heard.utterance.lower():
-			self.tts_control_pub.publish("shutup")
-			return
-
-	# Chatbot requests blink.
-	def chatbot_blink_cb(self, blink):
-
-		# XXX currently, this by-passes the OC behavior tree.
-		# Does that matter?  Currently, probably not.
-		rospy.loginfo(blink.data + ' says blink')
-		blink_probabilities = {
-			'chat_heard' : 0.4,
-			'chat_saying' : 0.7,
-			'tts_end' : 0.7 }
-		# If we get a string not in the dictionary, return 1.0.
-		blink_probability = blink_probabilities[blink.data]
-		if random.random() < blink_probability:
-			self.gesture('blink', 1.0, 1, 1.0)
-
 	# Turn behaviors on and off.
 	#
 	# 'btree_on' and 'btree_off' data-strings shouldn't be used, as they are
@@ -393,6 +282,7 @@ class EvaControl():
 		print "***5\n"
 		self.conv_mat=a.fromTranslationRotation(trans,rot)
 		print "hello! ***********"
+
 		# ----------------
 		# A list of parameter names that are mirrored in opencog for controling
 		# psi-rules
@@ -428,10 +318,6 @@ class EvaControl():
 		                                   SetGesture, queue_size=1)
 		self.soma_pub = rospy.Publisher("/blender_api/set_soma_state",
 		                                   SomaState, queue_size=2)
-		self.blink_pub = rospy.Publisher("/blender_api/set_blink_randomly",
-		                                   BlinkCycle, queue_size=1)
-		self.saccade_pub = rospy.Publisher("/blender_api/set_saccade",
-		                                   SaccadeCycle, queue_size=1)
 
 		# ----------------
 		# XYZ coordinates of where to turn and look.
@@ -451,38 +337,13 @@ class EvaControl():
 		self.gaze_at_pub = rospy.Publisher("/opencog/gaze_at",
 			Int32, queue_size=1)
 
-		#method shifted
-		#self.face_sound_pub = rospy.Publisher("/manyyears/face_id",
-		#	Int32, queue_size=1)
-
-
 		# ----------------
-		rospy.logwarn("setting up chatbot affect perceive and express links")
-
 		# Publish cues to the chatbot, letting it know what we are doing.
 		self.behavior_pub = rospy.Publisher("robot_behavior",
 		                                  String, queue_size=1)
 
 		# Tell the TTS subsystem what to vocalize
-		# self.tts_pub = rospy.Publisher("tts", String, queue_size=1)
-		# self.tts_pub = rospy.Publisher("/robot/chatbot_responses", String, queue_size=1)
 		self.tts_pub = rospy.Publisher("chatbot_responses", String, queue_size=1)
-
-		# Tell the chatbot what sort of affect to apply during
-		# TTS vocalization. (Huhh???)
-		self.affect_pub = rospy.Publisher("chatbot_affect_express",
-		                                  String, queue_size=1)
-
-		# Used to stop the vocalization.
-		self.tts_control_pub = rospy.Publisher("tts_control",
-		                                  String, queue_size=1)
-
-		# String text of what the robot heard (from TTS)
-		rospy.Subscriber("chatbot_speech", ChatMessage,
-			self.chat_perceived_text_cb)
-
-		# Chatbot can request blinks correlated with hearing and speaking.
-		rospy.Subscriber("chatbot_blink", String, self.chatbot_blink_cb)
 
 		# ----------------
 		# Boolean flag, turn the behavior tree on and off (set it running,
